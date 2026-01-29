@@ -1,0 +1,24 @@
+fastapi
+uvicorn[standard]
+pycryptodome
+matplotlib
+python-dotenv
+motor 
+email-validator          # async MongoDB driver
+PyJWT
+bcrypt
+python-multipart
+python-jose    
+langchain
+langsmith
+PyPDF2
+langgraph
+python-dotenv
+langchain-google-genai
+langchain-gemini
+langchain_community
+fastapi
+uvicorn
+gradio
+fitz
+pymupdf 
