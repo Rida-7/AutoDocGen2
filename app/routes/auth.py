@@ -18,7 +18,7 @@ router = APIRouter()
 JWT_SECRET = os.getenv("JWT_SECRET", "devsecret")
 JWT_EXPIRES_IN = os.getenv("JWT_EXPIRES_IN", "15m")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
-BASE_URL = os.getenv("BASE_URL", "http://localhost:4000")  # for OAuth redirects
+BASE_URL = os.getenv("BASE_URL", "http://localhost:4000")
 
 
 # -------------------------------
@@ -41,8 +41,6 @@ class RegisterPayload(BaseModel):
 def issue_token(response: Response, user: dict):
     """Issue JWT cookie"""
     payload = {"id": str(user.get("_id")), "email": user.get("email")}
-
-    # Calculate expiration
     try:
         if isinstance(JWT_EXPIRES_IN, str) and JWT_EXPIRES_IN.endswith("m"):
             minutes = int(JWT_EXPIRES_IN[:-1])
@@ -74,19 +72,17 @@ def serialize_user(user: dict) -> dict:
 
 
 # -------------------------------
-# Signup / Register
+# Signup
 # -------------------------------
 @router.post("/signup")
 @router.post("/register")
 async def signup(payload: RegisterPayload, request: Request):
     app = request.app
-
     existing = await find_user_by_email(app, payload.email)
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
     pw_hash = bcrypt.hashpw(payload.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-
     user_doc = {
         "email": payload.email,
         "name": payload.name,
@@ -94,22 +90,17 @@ async def signup(payload: RegisterPayload, request: Request):
         "providers": {},
         "createdAt": datetime.utcnow(),
     }
-
     new_user = await create_user(app, user_doc)
-
-    # Remove sensitive info and serialize
     new_user.pop("passwordHash", None)
     safe_user = serialize_user(new_user)
 
-    resp = JSONResponse(
-        content={"message": "User registered successfully", "user": safe_user}
-    )
+    resp = JSONResponse({"message": "User registered successfully", "user": safe_user})
     issue_token(resp, safe_user)
     return resp
 
 
 # -------------------------------
-# Signin / Login
+# Signin
 # -------------------------------
 @router.post("/signin")
 @router.post("/login")
@@ -119,16 +110,13 @@ async def signin(payload: LoginPayload, request: Request):
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    pw_hash = user.get("passwordHash", "")
-    if not bcrypt.checkpw(payload.password.encode("utf-8"), pw_hash.encode("utf-8")):
+    if not bcrypt.checkpw(payload.password.encode("utf-8"), user.get("passwordHash", "").encode("utf-8")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     user.pop("passwordHash", None)
     safe_user = serialize_user(user)
 
-    resp = JSONResponse(
-        content={"message": "Logged in successfully", "user": safe_user}
-    )
+    resp = JSONResponse({"message": "Logged in successfully", "user": safe_user})
     issue_token(resp, safe_user)
     return resp
 
@@ -171,7 +159,6 @@ async def google_callback(request: Request):
         token_res = await client.post(token_url, data=data)
         token_res.raise_for_status()
         tokens = token_res.json()
-
         headers = {"Authorization": f"Bearer {tokens['access_token']}"}
         user_res = await client.get("https://www.googleapis.com/oauth2/v2/userinfo", headers=headers)
         user_res.raise_for_status()
@@ -228,14 +215,17 @@ async def github_callback(request: Request):
         raise HTTPException(status_code=400, detail="Missing GitHub code")
 
     token_url = "https://github.com/login/oauth/access_token"
-    data = {"client_id": os.getenv("GITHUB_CLIENT_ID"), "client_secret": os.getenv("GITHUB_CLIENT_SECRET"), "code": code}
+    data = {
+        "client_id": os.getenv("GITHUB_CLIENT_ID"),
+        "client_secret": os.getenv("GITHUB_CLIENT_SECRET"),
+        "code": code
+    }
     headers = {"Accept": "application/json"}
 
     async with httpx.AsyncClient() as client:
         token_res = await client.post(token_url, data=data, headers=headers)
         token_res.raise_for_status()
         tokens = token_res.json()
-
         access_token = tokens.get("access_token")
         if not access_token:
             raise HTTPException(status_code=400, detail="GitHub token missing")
