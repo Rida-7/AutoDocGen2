@@ -1,7 +1,6 @@
 # /routes/trello_routes.py
 from fastapi import APIRouter, HTTPException, Request, Response, BackgroundTasks, Depends
-from app.services.trello_service import register_trello_webhook, get_user_token
-from app.models.user_token_model import get_user_boards
+from app.services.trello_service import register_trello_webhook, get_user_token, get_user_generated_boards
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.db import get_db  # Your MongoDB dependency
 from datetime import datetime
@@ -22,7 +21,7 @@ async def register_webhook(user_id: str):
         raise HTTPException(status_code=500, detail="WEBHOOK_URL not configured")
 
     # Fetch all boards registered for this user
-    user_boards = await get_user_boards(user_id)
+    user_boards = await get_user_generated_boards(user_id)
     if not user_boards:
         raise HTTPException(status_code=404, detail="No boards registered for this user")
 
