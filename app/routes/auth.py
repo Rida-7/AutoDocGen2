@@ -1,26 +1,29 @@
 # app/routes/auth.py
 import os
 import httpx
-from fastapi import APIRouter, Request, Response, HTTPException
-from fastapi.responses import RedirectResponse, JSONResponse
-from fastapi.encoders import jsonable_encoder
-from app.models.user_model import find_user_by_email, create_user
-from app.utils.crypto import encrypt, decrypt
 import bcrypt
 import jwt
 from datetime import datetime, timedelta
 from typing import Optional
+
+from fastapi import APIRouter, Request, Response, HTTPException
+from fastapi.responses import RedirectResponse, JSONResponse
 from pydantic import BaseModel, EmailStr
+from bson import ObjectId
+
+from app.models.user_model import find_user_by_email, create_user
 
 router = APIRouter()
 
 JWT_SECRET = os.getenv("JWT_SECRET", "devsecret")
 JWT_EXPIRES_IN = os.getenv("JWT_EXPIRES_IN", "15m")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
-BASE_URL = os.getenv("BASE_URL", "http://localhost:4000")  # used for OAuth redirect URIs
+BASE_URL = os.getenv("BASE_URL", "http://localhost:4000")  # for OAuth redirects
 
 
+# -------------------------------
 # Models
+# -------------------------------
 class LoginPayload(BaseModel):
     email: EmailStr
     password: str
@@ -32,10 +35,14 @@ class RegisterPayload(BaseModel):
     name: Optional[str] = None
 
 
-def issue_token(response: Response, user):
+# -------------------------------
+# Helpers
+# -------------------------------
+def issue_token(response: Response, user: dict):
+    """Issue JWT cookie"""
     payload = {"id": str(user.get("_id")), "email": user.get("email")}
+    # Calculate expiration
     try:
-        # interpret JWT_EXPIRES_IN as minutes like '15m'
         if isinstance(JWT_EXPIRES_IN, str) and JWT_EXPIRES_IN.endswith("m"):
             minutes = int(JWT_EXPIRES_IN[:-1])
             exp = datetime.utcnow() + timedelta(minutes=minutes)
@@ -46,33 +53,39 @@ def issue_token(response: Response, user):
         payload["exp"] = datetime.utcnow() + timedelta(minutes=15)
 
     token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
-    response.set_cookie("token", token, httponly=True, secure=(os.getenv("NODE_ENV") == "production"))
+    response.set_cookie(
+        "token",
+        token,
+        httponly=True,
+        secure=(os.getenv("NODE_ENV") == "production")
+    )
     return token
 
 
+def serialize_user(user: dict) -> dict:
+    """Convert ObjectId and datetime to JSON-safe types"""
+    user_copy = user.copy()
+    if "_id" in user_copy and isinstance(user_copy["_id"], ObjectId):
+        user_copy["_id"] = str(user_copy["_id"])
+    if "createdAt" in user_copy and isinstance(user_copy["createdAt"], datetime):
+        user_copy["createdAt"] = user_copy["createdAt"].isoformat()
+    return user_copy
+
+
 # -------------------------------
-# Signup (alias: register)
+# Signup
 # -------------------------------
 @router.post("/signup")
 @router.post("/register")
 async def signup(payload: RegisterPayload, request: Request):
     app = request.app
 
-    # Check if user already exists
     existing = await find_user_by_email(app, payload.email)
     if existing:
-        raise HTTPException(
-            status_code=400,
-            detail="Email already registered"
-        )
+        raise HTTPException(status_code=400, detail="Email already registered")
 
-    # Hash password
-    pw_hash = bcrypt.hashpw(
-        payload.password.encode("utf-8"),
-        bcrypt.gensalt()
-    ).decode("utf-8")
+    pw_hash = bcrypt.hashpw(payload.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
-    # User document
     user_doc = {
         "email": payload.email,
         "name": payload.name,
@@ -81,83 +94,44 @@ async def signup(payload: RegisterPayload, request: Request):
         "createdAt": datetime.utcnow(),
     }
 
-    # Create user in DB
     new_user = await create_user(app, user_doc)
 
-    # Remove sensitive fields
+    # Remove sensitive info and serialize
     new_user.pop("passwordHash", None)
+    safe_user = serialize_user(new_user)
 
-    # Convert ObjectId to string
-    if "_id" in new_user:
-        new_user["_id"] = str(new_user["_id"])
-
-    # Convert datetime to string (🔥 FIX)
-    if "createdAt" in new_user and isinstance(new_user["createdAt"], datetime):
-        new_user["createdAt"] = new_user["createdAt"].isoformat()
-
-    # Create response
     resp = JSONResponse(
-        content={
-            "message": "User registered successfully",
-            "user": new_user
-        }
+        content={"message": "User registered successfully", "user": safe_user}
     )
-
-    # Issue JWT cookie
-    issue_token(resp, new_user)
-
+    issue_token(resp, safe_user)
     return resp
 
 
-
 # -------------------------------
-# Signin (alias: login)
+# Signin
 # -------------------------------
 @router.post("/signin")
 @router.post("/login")
 async def signin(payload: LoginPayload, request: Request):
     app = request.app
     user = await find_user_by_email(app, payload.email)
-
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     pw_hash = user.get("passwordHash", "")
-    if not pw_hash or not bcrypt.checkpw(
-        payload.password.encode("utf-8"),
-        pw_hash.encode("utf-8")
-    ):
+    if not bcrypt.checkpw(payload.password.encode("utf-8"), pw_hash.encode("utf-8")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # remove sensitive fields
+    # Remove sensitive fields and serialize
     user.pop("passwordHash", None)
-
-    # 🔥 FIX: encode safely (datetime, ObjectId, etc.)
-    safe_user = jsonable_encoder(user)
+    safe_user = serialize_user(user)
 
     resp = JSONResponse(
-        content={
-            "message": "Logged in successfully",
-            "user": safe_user
-        }
+        content={"message": "Logged in successfully", "user": safe_user}
     )
-
-    issue_token(resp, user)
+    issue_token(resp, safe_user)
     return resp
 
-
-    # 🔥 FIX: encode safely (datetime, ObjectId, etc.)
-    safe_user = jsonable_encoder(user)
-
-    resp = JSONResponse(
-        content={
-            "message": "Logged in successfully",
-            "user": safe_user
-        }
-    )
-
-    issue_token(resp, user)
-    return resp
 
 # -------------------------------
 # Google OAuth
@@ -177,16 +151,14 @@ async def google_auth():
     )
     return RedirectResponse(url)
 
+
 @router.get("/google/callback")
 async def google_callback(request: Request):
     code = request.query_params.get("code")
-
     if not code:
         raise HTTPException(status_code=400, detail="Missing authorization code")
 
-    # Exchange code for token
     token_url = "https://oauth2.googleapis.com/token"
-
     data = {
         "client_id": os.getenv("GOOGLE_CLIENT_ID"),
         "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
@@ -200,7 +172,6 @@ async def google_callback(request: Request):
         token_res.raise_for_status()
         tokens = token_res.json()
 
-    # Get user info
     userinfo_url = "https://www.googleapis.com/oauth2/v2/userinfo"
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
 
@@ -211,14 +182,11 @@ async def google_callback(request: Request):
 
     email = google_user.get("email")
     name = google_user.get("name")
-
     if not email:
         raise HTTPException(status_code=400, detail="Google account has no email")
 
-    # Find or create user
     app = request.app
     user = await find_user_by_email(app, email)
-
     if not user:
         user_doc = {
             "email": email,
@@ -229,12 +197,10 @@ async def google_callback(request: Request):
         }
         user = await create_user(app, user_doc)
 
-    # Create response & issue JWT
+    safe_user = serialize_user(user)
     resp = RedirectResponse(url=f"{FRONTEND_URL}/landing")
-    issue_token(resp, user)
-
+    issue_token(resp, safe_user)
     return resp
-
 
 
 # -------------------------------
@@ -250,20 +216,15 @@ async def github_auth():
     )
     return RedirectResponse(url)
 
+
 @router.get("/github/callback")
 async def github_callback(request: Request):
     code = request.query_params.get("code")
-
     if not code:
         raise HTTPException(status_code=400, detail="Missing GitHub code")
 
-    # Exchange code for access token
     token_url = "https://github.com/login/oauth/access_token"
-    data = {
-        "client_id": os.getenv("GITHUB_CLIENT_ID"),
-        "client_secret": os.getenv("GITHUB_CLIENT_SECRET"),
-        "code": code,
-    }
+    data = {"client_id": os.getenv("GITHUB_CLIENT_ID"), "client_secret": os.getenv("GITHUB_CLIENT_SECRET"), "code": code}
     headers = {"Accept": "application/json"}
 
     async with httpx.AsyncClient() as client:
@@ -271,38 +232,25 @@ async def github_callback(request: Request):
         token_res.raise_for_status()
         tokens = token_res.json()
 
-    access_token = tokens.get("access_token")
-    if not access_token:
-        raise HTTPException(status_code=400, detail="GitHub token missing")
+        access_token = tokens.get("access_token")
+        if not access_token:
+            raise HTTPException(status_code=400, detail="GitHub token missing")
 
-    # Fetch user info
-    async with httpx.AsyncClient() as client:
-        user_res = await client.get(
-            "https://api.github.com/user",
-            headers={"Authorization": f"Bearer {access_token}"}
-        )
+        # Get user info
+        user_res = await client.get("https://api.github.com/user", headers={"Authorization": f"Bearer {access_token}"})
         user_res.raise_for_status()
         github_user = user_res.json()
 
-        email_res = await client.get(
-            "https://api.github.com/user/emails",
-            headers={"Authorization": f"Bearer {access_token}"}
-        )
+        email_res = await client.get("https://api.github.com/user/emails", headers={"Authorization": f"Bearer {access_token}"})
         email_res.raise_for_status()
         emails = email_res.json()
 
-    primary_email = next(
-        (e["email"] for e in emails if e.get("primary") and e.get("verified")),
-        None
-    )
-
+    primary_email = next((e["email"] for e in emails if e.get("primary") and e.get("verified")), None)
     if not primary_email:
         raise HTTPException(status_code=400, detail="No verified GitHub email")
 
-    # Find or create user
     app = request.app
     user = await find_user_by_email(app, primary_email)
-
     if not user:
         user_doc = {
             "email": primary_email,
@@ -313,7 +261,7 @@ async def github_callback(request: Request):
         }
         user = await create_user(app, user_doc)
 
+    safe_user = serialize_user(user)
     resp = RedirectResponse(url=f"{FRONTEND_URL}/landing")
-    issue_token(resp, user)
+    issue_token(resp, safe_user)
     return resp
-
