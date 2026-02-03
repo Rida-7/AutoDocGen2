@@ -14,10 +14,14 @@ async def save_user_token(user_id: str, trello_token: str, db: AsyncIOMotorDatab
         upsert=True
     )
 
-# ✅ Get user token
-async def get_user_token(user_id: str, db: AsyncIOMotorDatabase):
-    doc = await db["tokens"].find_one({"user_id": user_id})
-    return doc["trello_token"] if doc else None
+async def get_user_token(user_id, db):
+    user = await db["tokens"].find_one({"user_id": user_id})  # <-- correct collection
+    if not user:
+        print(f"❌ get_user_token: no token found for {user_id}")
+        return None
+    print(f"✅ get_user_token: token found for {user_id}")
+    return user.get("trello_token")
+
 
 # ✅ Get all user tokens (optional)
 async def get_all_user_tokens(db: AsyncIOMotorDatabase):
