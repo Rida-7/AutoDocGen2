@@ -124,9 +124,23 @@ async def signin(payload: LoginPayload, request: Request):
     if not bcrypt.checkpw(payload.password.encode("utf-8"), pw_hash.encode("utf-8")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    resp = JSONResponse(content={"message": "Logged in successfully"})
+    # remove sensitive fields
+    user.pop("passwordHash", None)
+
+    # convert ObjectId
+    if "_id" in user:
+        user["_id"] = str(user["_id"])
+
+    resp = JSONResponse(
+        content={
+            "message": "Logged in successfully",
+            "user": user
+        }
+    )
+
     issue_token(resp, user)
     return resp
+
 
 
 # -------------------------------
