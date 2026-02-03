@@ -198,9 +198,12 @@ async def shutdown_db_client():
 
 # ------------------ Trello Endpoints ------------------
 @app.get("/trello/connect")
-def trello_connect():
-    return connect_to_trello()
+def trello_connect(request: Request):
+    user_id = request.query_params.get("user_id")
+    if not user_id:
+        return {"status": "error", "message": "user_id is required"}
 
+    return connect_to_trello(user_id)
 
 @app.get("/trello/callback")
 def trello_callback():
@@ -210,26 +213,26 @@ def trello_callback():
 @app.post("/trello/save_token")
 async def trello_save_token(request: Request):
     """
-    Save Trello token for a user and map all boards to that user.
+    Save Trello token for a specific user (user_id from local storage).
+    Maps all boards of that user to their account.
     """
     data = await request.json()
     user_id = data.get("user_id")
     trello_token = data.get("trello_token")
     db = app.state.db
-    print("📥 save_token payload:", data)
 
     if not user_id or not trello_token:
         return {"status": "error", "message": "user_id and trello_token are required"}
 
-    # Save Trello token in MongoDB
     try:
+        # 1️⃣ Save user token
         await save_user_token(user_id, trello_token, db)
         print(f"✅ Trello token saved for user {user_id}")
     except Exception as e:
         print(f"❌ Failed to save Trello token for {user_id}: {e}")
-        return {"status": "error", "message": "Failed to save token"}
+        return {"status": "error", "message": "Failed to save Trello token"}
 
-    # Fetch all boards for this user
+    # 2️⃣ Fetch all boards for this user from Trello
     try:
         async with httpx.AsyncClient(timeout=20) as client:
             res = await client.get(
@@ -237,7 +240,8 @@ async def trello_save_token(request: Request):
                 params={
                     "key": TRELLO_API_KEY,
                     "token": trello_token,
-                    "fields": "id,name,desc"
+                    "fields": "id,name,desc",
+                    "filter": "open"
                 }
             )
             res.raise_for_status()
@@ -247,12 +251,16 @@ async def trello_save_token(request: Request):
         print(f"⚠️ Could not fetch boards for {user_id}: {e}")
         return {"status": "error", "message": "Failed to fetch boards"}
 
-    # Map each board to the user in MongoDB
+    # 3️⃣ Map boards to the user in MongoDB
     mapped_count = 0
     for board in boards:
+        board_id = board.get("id")
+        if not board_id:
+            continue
+
         try:
             await db["board_user_map"].update_one(
-                {"board_id": board["id"]},
+                {"board_id": board_id},
                 {"$set": {
                     "user_id": user_id,
                     "board_name": board.get("name", ""),
@@ -262,7 +270,7 @@ async def trello_save_token(request: Request):
             )
             mapped_count += 1
         except Exception as e:
-            print(f"⚠️ Failed to map board {board['id']} for {user_id}: {e}")
+            print(f"⚠️ Failed to map board {board_id} for {user_id}: {e}")
 
     return {
         "status": "success",
