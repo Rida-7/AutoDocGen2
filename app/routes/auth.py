@@ -3,11 +3,11 @@ import os
 import httpx
 import bcrypt
 import jwt
+import json
 from datetime import datetime, timedelta
 from typing import Optional
-
 from fastapi import APIRouter, Request, Response, HTTPException
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
 from pydantic import BaseModel, EmailStr
 from bson import ObjectId
 
@@ -41,6 +41,7 @@ class RegisterPayload(BaseModel):
 def issue_token(response: Response, user: dict):
     """Issue JWT cookie"""
     payload = {"id": str(user.get("_id")), "email": user.get("email")}
+
     # Calculate expiration
     try:
         if isinstance(JWT_EXPIRES_IN, str) and JWT_EXPIRES_IN.endswith("m"):
@@ -73,7 +74,7 @@ def serialize_user(user: dict) -> dict:
 
 
 # -------------------------------
-# Signup
+# Signup / Register
 # -------------------------------
 @router.post("/signup")
 @router.post("/register")
@@ -108,7 +109,7 @@ async def signup(payload: RegisterPayload, request: Request):
 
 
 # -------------------------------
-# Signin
+# Signin / Login
 # -------------------------------
 @router.post("/signin")
 @router.post("/login")
@@ -122,7 +123,6 @@ async def signin(payload: LoginPayload, request: Request):
     if not bcrypt.checkpw(payload.password.encode("utf-8"), pw_hash.encode("utf-8")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # Remove sensitive fields and serialize
     user.pop("passwordHash", None)
     safe_user = serialize_user(user)
 
@@ -172,11 +172,8 @@ async def google_callback(request: Request):
         token_res.raise_for_status()
         tokens = token_res.json()
 
-    userinfo_url = "https://www.googleapis.com/oauth2/v2/userinfo"
-    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
-
-    async with httpx.AsyncClient() as client:
-        user_res = await client.get(userinfo_url, headers=headers)
+        headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+        user_res = await client.get("https://www.googleapis.com/oauth2/v2/userinfo", headers=headers)
         user_res.raise_for_status()
         google_user = user_res.json()
 
@@ -198,7 +195,14 @@ async def google_callback(request: Request):
         user = await create_user(app, user_doc)
 
     safe_user = serialize_user(user)
-    resp = RedirectResponse(url=f"{FRONTEND_URL}/landing")
+    safe_user_json = json.dumps(safe_user)
+
+    resp = HTMLResponse(
+        '<script>'
+        f'localStorage.setItem("loggedInUser", {safe_user_json});'
+        f'window.location.href = "{FRONTEND_URL}/landing";'
+        '</script>'
+    )
     issue_token(resp, safe_user)
     return resp
 
@@ -236,7 +240,6 @@ async def github_callback(request: Request):
         if not access_token:
             raise HTTPException(status_code=400, detail="GitHub token missing")
 
-        # Get user info
         user_res = await client.get("https://api.github.com/user", headers={"Authorization": f"Bearer {access_token}"})
         user_res.raise_for_status()
         github_user = user_res.json()
@@ -262,6 +265,13 @@ async def github_callback(request: Request):
         user = await create_user(app, user_doc)
 
     safe_user = serialize_user(user)
-    resp = RedirectResponse(url=f"{FRONTEND_URL}/landing")
+    safe_user_json = json.dumps(safe_user)
+
+    resp = HTMLResponse(
+        '<script>'
+        f'localStorage.setItem("loggedInUser", {safe_user_json});'
+        f'window.location.href = "{FRONTEND_URL}/landing";'
+        '</script>'
+    )
     issue_token(resp, safe_user)
     return resp
