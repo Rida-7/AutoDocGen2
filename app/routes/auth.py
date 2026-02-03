@@ -144,6 +144,20 @@ async def signin(payload: LoginPayload, request: Request):
     issue_token(resp, user)
     return resp
 
+
+    # 🔥 FIX: encode safely (datetime, ObjectId, etc.)
+    safe_user = jsonable_encoder(user)
+
+    resp = JSONResponse(
+        content={
+            "message": "Logged in successfully",
+            "user": safe_user
+        }
+    )
+
+    issue_token(resp, user)
+    return resp
+
 # -------------------------------
 # Google OAuth
 # -------------------------------
