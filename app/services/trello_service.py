@@ -20,11 +20,12 @@ if not BASE_URL:
 # --------------------------------------------------
 # OAuth: Connect to Trello
 # --------------------------------------------------
-def connect_to_trello():
+def connect_to_trello(user_id: str):
     """
     Returns a RedirectResponse to authorize the user with Trello.
+    Includes the user_id as a state parameter in the callback.
     """
-    return_url = f"{BASE_URL}/trello/callback"
+    return_url = f"{BASE_URL}/trello/callback?user_id={user_id}"
     url = (
         "https://trello.com/1/authorize"
         "?expiration=30days"
@@ -35,6 +36,7 @@ def connect_to_trello():
         f"&return_url={return_url}"
     )
     return RedirectResponse(url)
+
 
 
 # --------------------------------------------------
