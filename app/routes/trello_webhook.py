@@ -4,15 +4,14 @@ from app.services.trello_service import register_trello_webhook, get_user_token,
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.db import get_db  # Your MongoDB dependency
 from datetime import datetime
+from fastapi import APIRouter, HTTPException
+from app.services.trello_service import register_trello_webhook, get_user_generated_boards
 import os
 
 router = APIRouter(prefix="/trello", tags=["Trello"])
 
-# ----------------------------
-# Register webhooks for user's boards only
-# ----------------------------
 @router.post("/webhook/register")
-async def register_webhook(user_id: str):
+async def register_webhook(user_id: str, db=Depends(get_db)):
     """
     Register webhooks only for boards linked to this user.
     """
@@ -21,25 +20,27 @@ async def register_webhook(user_id: str):
         raise HTTPException(status_code=500, detail="WEBHOOK_URL not configured")
 
     # Fetch all boards registered for this user
-    user_boards = await get_user_generated_boards(user_id)
+    user_boards = await get_user_generated_boards(user_id, db)
     if not user_boards:
         raise HTTPException(status_code=404, detail="No boards registered for this user")
 
     responses = []
     for board in user_boards:
+        # Here board["board_id"] must exist in your `get_user_generated_boards` output
         res = await register_trello_webhook(
             board_id=board["board_id"],
             callback_url=callback_url,
-            token=board["trello_token"],
+            token=os.getenv("TRELLO_TOKEN"),  # or user-specific token if stored
             key=os.getenv("TRELLO_API_KEY"),
         )
         responses.append({
             "board_id": board["board_id"],
-            "status_code": res.status_code,
-            "text": res.text
+            "status_code": res.status_code if res else 500,
+            "text": res.text if res else "Webhook failed"
         })
 
     return {"message": "Webhooks registered", "details": responses}
+
 
 
 # ----------------------------
