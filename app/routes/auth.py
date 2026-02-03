@@ -3,6 +3,7 @@ import os
 import httpx
 from fastapi import APIRouter, Request, Response, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.encoders import jsonable_encoder
 from app.models.user_model import find_user_by_email, create_user
 from app.utils.crypto import encrypt, decrypt
 import bcrypt
