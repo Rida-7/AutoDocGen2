@@ -7,12 +7,10 @@ router = APIRouter()
 
 
 
-async def process_trello_action(payload: dict):
-    """
-    Process the Trello action in the background.
-    Keep all workflow logic here.
-    """
+async def process_trello_action(payload: dict, db):
     notifications_collection = db["notifications"]
+    boards_collection = db["tokens"]  # Your user-board-token mapping
+
     action = payload.get("action")
     if not action:
         return
@@ -21,22 +19,21 @@ async def process_trello_action(payload: dict):
     data = action.get("data", {})
     board = data.get("board", {})
     card = data.get("card", {})
-    list_before = data.get("listBefore", {})
-    list_after = data.get("listAfter", {})
     member = action.get("memberCreator", {})
 
-    print("\n🔔 TRELLO BOARD CHANGE DETECTED")
-    print(f"Event Type : {event_type}")
-    print(f"Board      : {board.get('name', 'Unknown')} ({board.get('id', 'Unknown')})")
-    print(f"Card       : {card.get('name', 'Unknown')}")
-    print(f"User       : {member.get('fullName', 'Unknown')}")
-    if list_before or list_after:
-        print(f"List Move  : {list_before.get('name', 'Unknown')} → {list_after.get('name', 'Unknown')}")
-    print("──────────────────────────────────")
+    # Find user for this board
+    board_doc = await boards_collection.find_one({"board_id": board.get("id")})
+    if not board_doc:
+        # Board not registered → ignore event
+        return
 
-    # Save notification to MongoDB
+    user_id = board_doc.get("user_id")  # now dynamic per board
+
+    print(f"🔔 Board change detected for user {user_id}: {event_type} on {board.get('name')} / {card.get('name')}")
+
+    # Save notification
     notification_doc = {
-        "user_id": "user1",  # Map member/board to your user_id logic
+        "user_id": user_id,
         "board_id": board.get("id"),
         "board_name": board.get("name"),
         "event_type": event_type,
@@ -45,11 +42,6 @@ async def process_trello_action(payload: dict):
         "timestamp": datetime.utcnow()
     }
     await notifications_collection.insert_one(notification_doc)
-
-    # Optional: run workflow or additional processing
-    # await execute_workflow(user_id, project_id, data, db=db)
-
-
 # HEAD request for Trello verification
 @router.head("/pm")
 async def trello_webhook_verify():
