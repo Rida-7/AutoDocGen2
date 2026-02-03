@@ -117,31 +117,32 @@ async def signup(payload: RegisterPayload, request: Request):
 async def signin(payload: LoginPayload, request: Request):
     app = request.app
     user = await find_user_by_email(app, payload.email)
+
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     pw_hash = user.get("passwordHash", "")
-    if not bcrypt.checkpw(payload.password.encode("utf-8"), pw_hash.encode("utf-8")):
+    if not pw_hash or not bcrypt.checkpw(
+        payload.password.encode("utf-8"),
+        pw_hash.encode("utf-8")
+    ):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     # remove sensitive fields
     user.pop("passwordHash", None)
 
-    # convert ObjectId
-    if "_id" in user:
-        user["_id"] = str(user["_id"])
+    # 🔥 FIX: encode safely (datetime, ObjectId, etc.)
+    safe_user = jsonable_encoder(user)
 
     resp = JSONResponse(
         content={
             "message": "Logged in successfully",
-            "user": user
+            "user": safe_user
         }
     )
 
     issue_token(resp, user)
     return resp
-
-
 
 # -------------------------------
 # Google OAuth
