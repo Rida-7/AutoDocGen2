@@ -1,11 +1,17 @@
 # /routes/trello_routes.py
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request, Response, BackgroundTasks, Depends
 from app.services.trello_service import register_trello_webhook, get_user_token
 from app.models.user_token_model import get_user_boards
+from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.db import get_db  # Your MongoDB dependency
+from datetime import datetime
 import os
 
 router = APIRouter(prefix="/trello", tags=["Trello"])
 
+# ----------------------------
+# Register webhooks for user's boards only
+# ----------------------------
 @router.post("/webhook/register")
 async def register_webhook(user_id: str):
     """
@@ -35,3 +41,91 @@ async def register_webhook(user_id: str):
         })
 
     return {"message": "Webhooks registered", "details": responses}
+
+
+# ----------------------------
+# Trello webhook verification (HEAD request)
+# ----------------------------
+@router.head("/pm")
+async def trello_webhook_verify():
+    return Response(status_code=200)
+
+
+# ----------------------------
+# Process Trello webhook events (POST)
+# ----------------------------
+async def process_trello_action(payload: dict, db: AsyncIOMotorDatabase):
+    """
+    Process Trello action in background and save user-specific notifications.
+    """
+    notifications_collection = db["notifications"]
+    action = payload.get("action")
+    if not action:
+        return
+
+    event_type = action.get("type", "unknown")
+    data = action.get("data", {})
+    board = data.get("board", {})
+    card = data.get("card", {})
+    list_before = data.get("listBefore", {})
+    list_after = data.get("listAfter", {})
+    member = action.get("memberCreator", {})
+
+    print("\n🔔 TRELLO BOARD CHANGE DETECTED")
+    print(f"Event Type : {event_type}")
+    print(f"Board      : {board.get('name', 'Unknown')} ({board.get('id', 'Unknown')})")
+    print(f"Card       : {card.get('name', 'Unknown')}")
+    print(f"User       : {member.get('fullName', 'Unknown')}")
+    if list_before or list_after:
+        print(f"List Move  : {list_before.get('name', 'Unknown')} → {list_after.get('name', 'Unknown')}")
+    print("──────────────────────────────────")
+
+    # Map board to your registered user
+    user_boards = await get_user_boards_for_board(board.get("id"), db)
+    for user_board in user_boards:
+        notification_doc = {
+            "user_id": user_board["user_id"],  # specific user
+            "board_id": board.get("id"),
+            "board_name": board.get("name"),
+            "event_type": event_type,
+            "card_name": card.get("name"),
+            "changes": {"user": member.get("fullName")},
+            "timestamp": datetime.utcnow()
+        }
+        await notifications_collection.insert_one(notification_doc)
+
+
+# ----------------------------
+# Trello webhook POST endpoint
+# ----------------------------
+@router.post("/pm")
+async def trello_webhook(request: Request, background_tasks: BackgroundTasks, db: AsyncIOMotorDatabase = Depends(get_db)):
+    try:
+        payload = await request.json()
+    except Exception:
+        return Response(status_code=200)
+
+    background_tasks.add_task(process_trello_action, payload, db)
+    return Response(status_code=200)
+
+
+# ----------------------------
+# Fetch user notifications
+# ----------------------------
+@router.get("/notifications/{user_id}")
+async def get_notifications(user_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
+    notifications_collection = db["notifications"]
+    notifications = await notifications_collection.find({"user_id": user_id}).sort("timestamp", -1).to_list(100)
+    return {"status": "success", "notifications": notifications}
+
+
+# ----------------------------
+# Helper function to get users linked to a board
+# ----------------------------
+async def get_user_boards_for_board(board_id: str, db: AsyncIOMotorDatabase):
+    """
+    Returns all user-board mappings for a specific Trello board
+    """
+    tokens_collection = db["tokens"]
+    user_boards = await tokens_collection.find({"board_id": board_id}).to_list(length=None)
+    return user_boards
