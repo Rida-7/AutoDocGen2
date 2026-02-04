@@ -122,10 +122,8 @@ async def get_notifications(user_id: str, db: AsyncIOMotorDatabase = Depends(get
 # ----------------------------
 # Helper function to get users linked to a board
 # ----------------------------
-async def get_user_boards_for_board(board_id: str, db: AsyncIOMotorDatabase):
-    """
-    Returns all user-board mappings for a specific Trello board
-    """
-    tokens_collection = db["tokens"]
-    user_boards = await tokens_collection.find({"board_id": board_id}).to_list(length=None)
-    return user_boards
+async def get_user_boards_for_board(board_id: str, db):
+    return await db["board_user_map"].find(
+        {"board_id": board_id}
+    ).to_list(length=None)
+
