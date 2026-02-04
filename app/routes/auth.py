@@ -39,25 +39,25 @@ class RegisterPayload(BaseModel):
 # Helpers
 # -------------------------------
 def issue_token(response: Response, user: dict):
-    """Issue JWT cookie"""
-    payload = {"id": str(user.get("_id")), "email": user.get("email")}
-    try:
-        if isinstance(JWT_EXPIRES_IN, str) and JWT_EXPIRES_IN.endswith("m"):
-            minutes = int(JWT_EXPIRES_IN[:-1])
-            exp = datetime.utcnow() + timedelta(minutes=minutes)
-        else:
-            exp = datetime.utcnow() + timedelta(minutes=15)
-        payload["exp"] = exp
-    except Exception:
-        payload["exp"] = datetime.utcnow() + timedelta(minutes=15)
+    """Issue JWT cookie in a dev-friendly way for localhost."""
+    payload = {
+        "id": str(user.get("_id")),
+        "email": user.get("email"),
+        "exp": datetime.utcnow() + timedelta(minutes=15)
+    }
 
     token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
+    # Set cookie
     response.set_cookie(
-        "token",
-        token,
-        httponly=True,
-        secure=(os.getenv("NODE_ENV") == "production")
+        key="token",
+        value=token,
+        httponly=True,          # JS cannot access token (safer)
+        secure=False,           # must be False for localhost HTTP
+        samesite="lax",         # allows sending cookie on normal requests
+        path="/"                 # cookie available on all paths
     )
+
     return token
 
 
