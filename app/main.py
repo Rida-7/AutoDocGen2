@@ -33,17 +33,17 @@ app = FastAPI()
 
 # ------------------ CORS ------------------
 origins = [
-    FRONTEND_URL,
-    "http://localhost:5173"
+    "http://localhost:5173",  # your Vite frontend
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=True,
+    allow_credentials=True,  # important to allow cookies
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # ------------------ Routers ------------------
 from app.routes.fake_webhook import router as fake_webhook_router
