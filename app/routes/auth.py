@@ -179,18 +179,18 @@ async def google_callback(request: Request):
             "providers": {"google": True},
             "createdAt": datetime.utcnow(),
         }
-        user = await create_user(app, user_doc)
+        userr = await create_user(app, user_doc)
 
-    safe_user = serialize_user(user)
-    safe_user_json = json.dumps(safe_user)
+    user = serialize_user(userr)
+    safe_user_json = json.dumps(user)
 
     resp = HTMLResponse(
         '<script>'
-        f'localStorage.setItem("userId", "{safe_user["_id"]}");'
+        f'localStorage.setItem("userId", "{user["_id"]}");'
         f'window.location.href = "{FRONTEND_URL}/landing";'
         '</script>'
     )
-    issue_token(resp, safe_user)
+    issue_token(resp, user)
     return resp
 
 
@@ -252,16 +252,16 @@ async def github_callback(request: Request):
             "providers": {"github": True},
             "createdAt": datetime.utcnow(),
         }
-        user = await create_user(app, user_doc)
+        userr = await create_user(app, user_doc)
 
-    safe_user = serialize_user(user)
-    safe_user_json = json.dumps(safe_user)
+    user = serialize_user(userr)
+    safe_user_json = json.dumps(user)
 
     resp = HTMLResponse(
         '<script>'
-        f'localStorage.setItem("userId", "{safe_user["_id"]}");'
+        f'localStorage.setItem("userId", "{user["_id"]}");'
         f'window.location.href = "{FRONTEND_URL}/landing";'
         '</script>'
     )
-    issue_token(resp, safe_user)
+    issue_token(resp, user)
     return resp
