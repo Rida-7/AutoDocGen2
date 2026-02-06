@@ -186,7 +186,7 @@ async def google_callback(request: Request):
 
     resp = HTMLResponse(
         '<script>'
-        f'localStorage.setItem("loggedInUser", {safe_user_json});'
+        f'localStorage.setItem("userId", "{safe_user["_id"]}");'
         f'window.location.href = "{FRONTEND_URL}/landing";'
         '</script>'
     )
@@ -259,7 +259,7 @@ async def github_callback(request: Request):
 
     resp = HTMLResponse(
         '<script>'
-        f'localStorage.setItem("loggedInUser", {safe_user_json});'
+        f'localStorage.setItem("userId", "{safe_user["_id"]}");'
         f'window.location.href = "{FRONTEND_URL}/landing";'
         '</script>'
     )
