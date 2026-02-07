@@ -10,6 +10,7 @@ from fastapi import APIRouter, Request, Response, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
 from pydantic import BaseModel, EmailStr
 from bson import ObjectId
+import urllib.parse
 
 from app.models.user_model import find_user_by_email, create_user
 
@@ -182,15 +183,23 @@ async def google_callback(request: Request):
         user = await create_user(app, user_doc)
 
     safe_user = serialize_user(user)
-    safe_user_json = json.dumps(safe_user)
-    user_id = str(user.get("_id"))
+    # safe_user_json = json.dumps(safe_user)
+    # user_id = str(user.get("_id"))
 
-    resp = HTMLResponse(
-        '<script>'
-        f'localStorage.setItem("userId", "{user_id}");'
-        f'window.location.href = "{FRONTEND_URL}/landing";'
-        '</script>'
-    )
+    # resp = HTMLResponse(
+    #     '<script>'
+    #     f'localStorage.setItem("userId", "{user_id}");'
+    #     f'window.location.href = "{FRONTEND_URL}/landing";'
+    #     '</script>'
+    # )
+    # issue_token(resp, safe_user)
+    # return resp
+    user_id = safe_user["_id"]
+
+    # Redirect directly to your frontend with the ID in the URL
+    redirect_url = f"{FRONTEND_URL}/landing?userId={user_id}"
+
+    resp = RedirectResponse(url=redirect_url)
     issue_token(resp, safe_user)
     return resp
 
