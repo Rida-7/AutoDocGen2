@@ -140,58 +140,6 @@ async def google_auth():
     return RedirectResponse(url)
 
 
-# @router.get("/google/callback")
-# async def google_callback(request: Request):
-#     code = request.query_params.get("code")
-#     if not code:
-#         raise HTTPException(status_code=400, detail="Missing authorization code")
-
-#     token_url = "https://oauth2.googleapis.com/token"
-#     data = {
-#         "client_id": os.getenv("GOOGLE_CLIENT_ID"),
-#         "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
-#         "code": code,
-#         "grant_type": "authorization_code",
-#         "redirect_uri": BASE_URL + "/auth/google/callback",
-#     }
-
-#     async with httpx.AsyncClient() as client:
-#         token_res = await client.post(token_url, data=data)
-#         token_res.raise_for_status()
-#         tokens = token_res.json()
-#         headers = {"Authorization": f"Bearer {tokens['access_token']}"}
-#         user_res = await client.get("https://www.googleapis.com/oauth2/v2/userinfo", headers=headers)
-#         user_res.raise_for_status()
-#         google_user = user_res.json()
-
-#     email = google_user.get("email")
-#     name = google_user.get("name")
-#     if not email:
-#         raise HTTPException(status_code=400, detail="Google account has no email")
-
-#     app = request.app
-#     user = await find_user_by_email(app, email)
-#     if not user:
-#         user_doc = {
-#             "email": email,
-#             "name": name,
-#             "passwordHash": None,
-#             "providers": {"google": True},
-#             "createdAt": datetime.utcnow(),
-#         }
-#         user = await create_user(app, user_doc)
-
-#     safe_user = serialize_user(user)
-#     safe_user_json = json.dumps(safe_user)
-
-#     resp = HTMLResponse(
-#         '<script>'
-#         f'localStorage.setItem("userId", "{safe_user["_id"]}");'
-#         f'window.location.href = "{FRONTEND_URL}/landing";'
-#         '</script>'
-#     )
-#     issue_token(resp, safe_user)
-#     return resp
 @router.get("/google/callback")
 async def google_callback(request: Request):
     code = request.query_params.get("code")
@@ -232,20 +180,17 @@ async def google_callback(request: Request):
             "createdAt": datetime.utcnow(),
         }
         user = await create_user(app, user_doc)
-    
 
     safe_user = serialize_user(user)
-    print("Google user:", safe_user)
-    user_id = safe_user.get("_id")
-    if not user_id:
-        print("ERROR: No user ID found in user object:", user)
-        raise HTTPException(status_code=500, detail="Failed to get user ID")
-    
-    print(f"✅ Google OAuth successful. User ID: {user_id}")
-    
-    # ✅ Redirect with userId as URL parameter
-    redirect_url = f"{FRONTEND_URL}/landing?userId={user_id}"
-    resp = RedirectResponse(redirect_url)
+    safe_user_json = json.dumps(safe_user)
+    user_id = str(user.get("_id"))
+
+    resp = HTMLResponse(
+        '<script>'
+        f'localStorage.setItem("userId", "{user_id}");'
+        f'window.location.href = "{FRONTEND_URL}/landing";'
+        '</script>'
+    )
     issue_token(resp, safe_user)
     return resp
 
@@ -264,63 +209,6 @@ async def github_auth():
     return RedirectResponse(url)
 
 
-# @router.get("/github/callback")
-# async def github_callback(request: Request):
-#     code = request.query_params.get("code")
-#     if not code:
-#         raise HTTPException(status_code=400, detail="Missing GitHub code")
-
-#     token_url = "https://github.com/login/oauth/access_token"
-#     data = {
-#         "client_id": os.getenv("GITHUB_CLIENT_ID"),
-#         "client_secret": os.getenv("GITHUB_CLIENT_SECRET"),
-#         "code": code
-#     }
-#     headers = {"Accept": "application/json"}
-
-#     async with httpx.AsyncClient() as client:
-#         token_res = await client.post(token_url, data=data, headers=headers)
-#         token_res.raise_for_status()
-#         tokens = token_res.json()
-#         access_token = tokens.get("access_token")
-#         if not access_token:
-#             raise HTTPException(status_code=400, detail="GitHub token missing")
-
-#         user_res = await client.get("https://api.github.com/user", headers={"Authorization": f"Bearer {access_token}"})
-#         user_res.raise_for_status()
-#         github_user = user_res.json()
-
-#         email_res = await client.get("https://api.github.com/user/emails", headers={"Authorization": f"Bearer {access_token}"})
-#         email_res.raise_for_status()
-#         emails = email_res.json()
-
-#     primary_email = next((e["email"] for e in emails if e.get("primary") and e.get("verified")), None)
-#     if not primary_email:
-#         raise HTTPException(status_code=400, detail="No verified GitHub email")
-
-#     app = request.app
-#     user = await find_user_by_email(app, primary_email)
-#     if not user:
-#         user_doc = {
-#             "email": primary_email,
-#             "name": github_user.get("name") or github_user.get("login"),
-#             "passwordHash": None,
-#             "providers": {"github": True},
-#             "createdAt": datetime.utcnow(),
-#         }
-#         user = await create_user(app, user_doc)
-
-#     safe_user = serialize_user(user)
-#     safe_user_json = json.dumps(safe_user)
-
-#     resp = HTMLResponse(
-#         '<script>'
-#         f'localStorage.setItem("userId", "{safe_user["_id"]}");'
-#         f'window.location.href = "{FRONTEND_URL}/landing";'
-#         '</script>'
-#     )
-#     issue_token(resp, safe_user)
-#     return resp
 @router.get("/github/callback")
 async def github_callback(request: Request):
     code = request.query_params.get("code")
@@ -366,13 +254,15 @@ async def github_callback(request: Request):
             "createdAt": datetime.utcnow(),
         }
         user = await create_user(app, user_doc)
-    
 
     safe_user = serialize_user(user)
-    print("GitHub user:", safe_user)
-    
-    # ✅ Redirect with userId as URL parameter
-    redirect_url = f"{FRONTEND_URL}/landing?userId={safe_user['_id']}"
-    resp = RedirectResponse(redirect_url)
+    safe_user_json = json.dumps(safe_user)
+
+    resp = HTMLResponse(
+        '<script>'
+        f'localStorage.setItem("userId", "{safe_user["_id"]}");'
+        f'window.location.href = "{FRONTEND_URL}/landing";'
+        '</script>'
+    )
     issue_token(resp, safe_user)
     return resp
