@@ -237,7 +237,7 @@ async def google_callback(request: Request):
     safe_user = serialize_user(user)
     
     # ✅ Redirect with userId as URL parameter
-    redirect_url = f"{FRONTEND_URL}/landing?userId={safe_user['_id']}"
+    redirect_url = f"{FRONTEND_URL}/landing?userId={safe_user}"
     resp = RedirectResponse(redirect_url)
     issue_token(resp, safe_user)
     return resp
