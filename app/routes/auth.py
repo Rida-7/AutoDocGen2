@@ -232,6 +232,7 @@ async def google_callback(request: Request):
             "createdAt": datetime.utcnow(),
         }
         user = await create_user(app, user_doc)
+    print("Google user:", user)
 
     safe_user = serialize_user(user)
     
@@ -358,6 +359,7 @@ async def github_callback(request: Request):
             "createdAt": datetime.utcnow(),
         }
         user = await create_user(app, user_doc)
+    print("GitHub user:", user)
 
     safe_user = serialize_user(user)
     
