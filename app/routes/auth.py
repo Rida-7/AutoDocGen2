@@ -232,12 +232,19 @@ async def google_callback(request: Request):
             "createdAt": datetime.utcnow(),
         }
         user = await create_user(app, user_doc)
-    print("Google user:", user)
+    
 
     safe_user = serialize_user(user)
+    print("Google user:", safe_user)
+    user_id = safe_user.get("_id")
+    if not user_id:
+        print("ERROR: No user ID found in user object:", user)
+        raise HTTPException(status_code=500, detail="Failed to get user ID")
+    
+    print(f"✅ Google OAuth successful. User ID: {user_id}")
     
     # ✅ Redirect with userId as URL parameter
-    redirect_url = f"{FRONTEND_URL}/landing?userId={safe_user}"
+    redirect_url = f"{FRONTEND_URL}/landing?userId={safe_user['_id']}"
     resp = RedirectResponse(redirect_url)
     issue_token(resp, safe_user)
     return resp
@@ -359,9 +366,10 @@ async def github_callback(request: Request):
             "createdAt": datetime.utcnow(),
         }
         user = await create_user(app, user_doc)
-    print("GitHub user:", user)
+    
 
     safe_user = serialize_user(user)
+    print("GitHub user:", safe_user)
     
     # ✅ Redirect with userId as URL parameter
     redirect_url = f"{FRONTEND_URL}/landing?userId={safe_user['_id']}"
