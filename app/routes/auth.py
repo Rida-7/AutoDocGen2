@@ -183,21 +183,9 @@ async def google_callback(request: Request):
         user = await create_user(app, user_doc)
 
     safe_user = serialize_user(user)
-    # safe_user_json = json.dumps(safe_user)
-    # user_id = str(user.get("_id"))
 
-    # resp = HTMLResponse(
-    #     '<script>'
-    #     f'localStorage.setItem("userId", "{user_id}");'
-    #     f'window.location.href = "{FRONTEND_URL}/landing";'
-    #     '</script>'
-    # )
-    # issue_token(resp, safe_user)
-    # return resp
-    user_id = safe_user["_id"]
-
-    # Redirect directly to your frontend with the ID in the URL
-    redirect_url = f"{FRONTEND_URL}/landing?userId={user_id}"
+    # Redirect directly to your frontend 
+    redirect_url = f"{FRONTEND_URL}/landing"
 
     resp = RedirectResponse(url=redirect_url)
     issue_token(resp, safe_user)
@@ -265,13 +253,10 @@ async def github_callback(request: Request):
         user = await create_user(app, user_doc)
 
     safe_user = serialize_user(user)
-    safe_user_json = json.dumps(safe_user)
 
-    resp = HTMLResponse(
-        '<script>'
-        f'localStorage.setItem("userId", "{safe_user["_id"]}");'
-        f'window.location.href = "{FRONTEND_URL}/landing";'
-        '</script>'
-    )
+     # Redirect directly to your frontend 
+    redirect_url = f"{FRONTEND_URL}/landing"
+
+    resp = RedirectResponse(url=redirect_url)
     issue_token(resp, safe_user)
     return resp
