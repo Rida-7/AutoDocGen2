@@ -123,8 +123,8 @@ async def build_state(payload: dict, db):
     # TRELLO SOURCE
     # =========================
     else:
-        token = await get_user_token(user_id, db)
-        if not token:
+        trello_token = await get_user_token(user_id, db)
+        if not trello_token:
             raise ValueError("Trello not connected")
 
         board_name = await get_board_name(user_id, project_id, db)
@@ -149,7 +149,7 @@ async def build_state(payload: dict, db):
         final_doc="",
         user_feedback="",
         user_trello_key=os.getenv("TRELLO_API_KEY", ""),
-        user_trello_token=os.getenv("TRELLO_TOKEN", "")
+        user_trello_token=trello_token if source == "trello" else "",
     )
 
 
