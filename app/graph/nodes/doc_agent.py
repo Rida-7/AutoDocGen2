@@ -98,6 +98,8 @@ DOCUMENT:
     result = await llm.ainvoke(prompt)
 
     full_text = result.content if hasattr(result, "content") else str(result)
+    full_text = re.sub(r'<br\s*/?>', ' ', full_text)  # <br> → space
+    full_text = re.sub(r'<[^>]+>', '', full_text)       # HTML tags removal
 
     print("🔍 [doc_agent] OUTPUT LENGTH:", len(full_text))
 
