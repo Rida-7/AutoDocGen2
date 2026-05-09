@@ -14,7 +14,39 @@ async def get_all_generated_docs(request: Request, user_id: str):
     db = request.app.state.db
     collection = db["generated_docs"]
 
-    cursor = collection.find({"user_id": user_id}).sort("version", -1)
+    # ======================================
+    # 1. Get subscription
+    # ======================================
+    from app.models.subscription_model import get_user_subscription
+
+    sub = await get_user_subscription(user_id, db)
+    plan = sub.get("plan", "free")
+
+    # ======================================
+    # 2. Check workspace only if TEAM
+    # ======================================
+    workspace = None
+    query = {}
+
+    if plan == "team":
+        workspace = await db["workspaces"].find_one(
+            {"members": user_id}
+        )
+
+        if workspace:
+            query = {
+                "workspace_id": str(workspace["_id"])
+            }
+        else:
+            # fallback if no workspace found
+            query = {"user_id": user_id}
+    else:
+        query = {"user_id": user_id}
+
+    # ======================================
+    # 3. Fetch docs
+    # ======================================
+    cursor = collection.find(query).sort("version", -1)
 
     latest_map = {}
 

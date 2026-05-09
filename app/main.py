@@ -72,6 +72,10 @@ from app.routes.github_auth import router as github_auth_router
 from app.routes.github_repo_router import router as github_repos_router
 from app.routes.github_webhook_router import router as github_webhook_router
 from app.routes.notification_router import router as notification_router
+from app.routes.subscription_router import router as subscription_router
+from app.routes.workspace_router import router as workspace_router
+
+
 
 
 print("🔥 DEBUG: Registering routers...")
@@ -91,6 +95,9 @@ app.include_router(github_auth_router)
 app.include_router(github_repos_router)
 app.include_router(github_webhook_router)
 app.include_router(notification_router)
+
+app.include_router(subscription_router)
+app.include_router(workspace_router)
 
 # ------------------ Services ------------------
 print("🔥 DEBUG: Loading services...")
