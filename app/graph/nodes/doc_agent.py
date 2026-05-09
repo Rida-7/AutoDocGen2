@@ -97,9 +97,20 @@ DOCUMENT:
     llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", streaming=False)
     result = await llm.ainvoke(prompt)
 
-    full_text = result.content if hasattr(result, "content") else str(result)
-    full_text = re.sub(r'<br\s*/?>', ' ', full_text)  # <br> → space
-    full_text = re.sub(r'<[^>]+>', '', full_text)       # HTML tags removal
+    # ✅ content ko string mein convert karo pehle
+    raw = result.content if hasattr(result, "content") else str(result)
+    
+    if isinstance(raw, list):
+        full_text = " ".join(
+            item.get("text", "") if isinstance(item, dict) else str(item)
+            for item in raw
+        )
+    else:
+        full_text = str(raw)
+
+    # ✅ HTML cleanup
+    full_text = re.sub(r'<br\s*/?>', ' ', full_text)
+    full_text = re.sub(r'<[^>]+>', '', full_text)
 
     print("🔍 [doc_agent] OUTPUT LENGTH:", len(full_text))
 
