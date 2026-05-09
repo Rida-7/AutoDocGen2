@@ -48,8 +48,8 @@ async def create_docs_node(state):
     # =========================
     # ✅ TEMPLATE ROUTING LOGIC
     # =========================
+    prompt_template = load_prompt_from_langsmith(doc_type)
     prompt_name = TEMPLATE_PROMPT_MAP.get(doc_type, DEFAULT_PROMPT)
-    prompt_template = load_prompt_from_langsmith(prompt_name)
 
     print("📄 DOC TYPE:", doc_type)
     print("🧠 PROMPT USED:", prompt_name)
