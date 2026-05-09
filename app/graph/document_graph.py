@@ -40,6 +40,8 @@ class WorkflowState(TypedDict, total=False):
     new_headings: List[str]
     intent: str
     doc_type: str
+    user_trello_key: str    # ✅ ADD
+    user_trello_token: str  # ✅ ADD
 
 # =====================================================
 # GRAPH INIT
