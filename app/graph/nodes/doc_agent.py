@@ -97,20 +97,34 @@ DOCUMENT:
     llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", streaming=False)
     result = await llm.ainvoke(prompt)
 
-    # ✅ content ko string mein convert karo pehle
-    raw = result.content if hasattr(result, "content") else str(result)
-    
-    if isinstance(raw, list):
-        full_text = " ".join(
-            item.get("text", "") if isinstance(item, dict) else str(item)
-            for item in raw
-        )
-    else:
-        full_text = str(raw)
+    full_text = result.content if hasattr(result, "content") else str(result)
 
-    # ✅ HTML cleanup
+    if isinstance(full_text, list):
+        full_text = " ".join([
+            item.get("text", "") if isinstance(item, dict) else str(item)
+            for item in full_text
+        ])
+    
+
+    # <br> hatao
     full_text = re.sub(r'<br\s*/?>', ' ', full_text)
-    full_text = re.sub(r'<[^>]+>', '', full_text)
+
+    # Table cell ke andar newlines hatao — | ke beech jo \n hain
+    def clean_table_cells(text):
+        lines = text.split('\n')
+        result = []
+        for line in lines:
+            if line.strip().startswith('|'):
+                # Cell ke andar extra whitespace aur newline artifacts hatao
+                line = re.sub(r'\|\s*\n\s*', '| ', line)
+                line = ' '.join(line.split())  # multiple spaces → single space
+            result.append(line)
+        return '\n'.join(result)
+
+    full_text = clean_table_cells(full_text)
+
+    # Separator rows jo sirf dashes hain woh hatao (standalone --- lines)
+    full_text = re.sub(r'\n\s*-{3,}\s*\n', '\n', full_text)
 
     print("🔍 [doc_agent] OUTPUT LENGTH:", len(full_text))
 
