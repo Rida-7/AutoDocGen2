@@ -11,6 +11,7 @@ import stripe
 router = APIRouter(prefix="/subscription", tags=["Subscription"])
 endpoint_secret = "whsec_a3AzLDHltfilLI3RheKhMY3K73RBcIfZ"
 
+
 @router.get("/status")
 async def get_status(user_id: str, request: Request):
     db = request.app.state.db
