@@ -390,10 +390,11 @@ Return improved document only.
 # ------------------ Generated Doc ------------------
 @app.get("/workflow/generated")
 async def get_generated_doc(
+    request: Request,
     user_id: str,
     project_id: str,
     template_name: str,
-    request: Request
+    workspace_id: str = None,   # team fallback
 ):
     print("🔥 DEBUG: Fetch generated doc request")
 
@@ -404,22 +405,33 @@ async def get_generated_doc(
 
     print(f"🔥 DEBUG: source={source}, team_id={team_id}")
 
+    # 1. Try is_latest first
     doc = await db["generated_docs"].find_one({
-    "user_id": user_id,
-    "project_id": project_id,
-    "template_name": template_name,
-    "is_latest": True
-})
+        "user_id": user_id,
+        "project_id": project_id,
+        "template_name": template_name,
+        "is_latest": True
+    })
 
+    # 2. Fallback: latest by version for this user
     if not doc:
         doc = await db["generated_docs"].find_one(
-        {
-            "user_id": user_id,
-            "project_id": project_id,
-            "template_name": template_name,
-        },
-             sort=[("version", -1)]
-    )
+            {"user_id": user_id, "project_id": project_id, "template_name": template_name},
+            sort=[("version", -1)]
+        )
+
+    # 3. ✅ Team fallback: someone else in the same workspace generated it
+    if not doc and workspace_id:
+        doc = await db["generated_docs"].find_one(
+            {"workspace_id": workspace_id, "project_id": project_id, "template_name": template_name},
+            sort=[("version", -1)]
+        )
+
+    # 4. ✅ Guard — was missing, causing the crash
+    if not doc:
+        print("❌ DEBUG: Document not found")
+        return {"status": "not_found", "generated_docs": "", "board_name": ""}
+
     return {
         "status": "success",
         "template_name": template_name,
