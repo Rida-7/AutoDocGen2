@@ -67,24 +67,24 @@ async def get_all_generated_docs(request: Request, user_id: str):
                 "created_by_user_id": doc.get("user_id", ""),
             }
 
-        creator_ids = list({
-            v["created_by_user_id"]
-            for v in latest_map.values()
-            if v.get("created_by_user_id")
-        })
+    creator_ids = list({
+        v["created_by_user_id"]
+        for v in latest_map.values()
+        if v.get("created_by_user_id")
+    })
 
-        creator_map = {}
-        if creator_ids:
-            from bson import ObjectId
-            user_cursor = db["users"].find(
-                {"_id": {"$in": [ObjectId(uid) for uid in creator_ids]}},
-                {"_id": 1, "name": 1, "email": 1}
-            )
-            async for u in user_cursor:
-                creator_map[str(u["_id"])] = u.get("name") or u.get("email") or "Unknown"
+    creator_map = {}
+    if creator_ids:
+        from bson import ObjectId
+        user_cursor = db["users"].find(
+            {"_id": {"$in": [ObjectId(uid) for uid in creator_ids]}},
+            {"_id": 1, "name": 1, "email": 1}
+        )
+        async for u in user_cursor:
+            creator_map[str(u["_id"])] = u.get("name") or u.get("email") or "Unknown"
 
-        for v in latest_map.values():
-            v["created_by_name"] = creator_map.get(v.get("created_by_user_id", ""), "Unknown")
+    for v in latest_map.values():
+        v["created_by_name"] = creator_map.get(v.get("created_by_user_id", ""), "Unknown")
 
     return {
         "status": "success",
