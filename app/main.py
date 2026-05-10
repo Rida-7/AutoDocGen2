@@ -446,12 +446,29 @@ async def get_generated_doc(
     if not doc:
         print("❌ DEBUG: Document not found")
         return {"status": "not_found", "generated_docs": "", "board_name": ""}
+    
+    # ✅ Fetch creator name
+    creator_name = "Unknown"
+    creator_id = doc.get("user_id", "")
+    if creator_id:
+        from bson import ObjectId
+        try:
+            creator = await db["users"].find_one(
+                {"_id": ObjectId(creator_id)},
+                {"name": 1, "email": 1}
+            )
+            if creator:
+                creator_name = creator.get("name") or creator.get("email") or "Unknown"
+        except Exception:
+            pass
 
     return {
         "status": "success",
         "template_name": template_name,
         "generated_docs": doc.get("generated_docs", ""),
         "board_name": doc.get("board_name") or doc.get("workspace_name") or "Unknown Board",
+        "created_by_name": creator_name,  # ✅
+        "version": doc.get("version"),    # ✅
     }
 
 # ------------------ Run ------------------
