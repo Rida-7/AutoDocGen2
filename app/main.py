@@ -316,7 +316,6 @@ async def channels_with_headings(user_id: str, team_id: str):
 
 # ------------------ Workflow ------------------
 
-# ------------------ Improve with Feedback ------------------
 @app.post("/workflow/improve-with-feedback")
 async def improve_with_feedback(request: Request):
     data = await request.json()
@@ -331,28 +330,18 @@ async def improve_with_feedback(request: Request):
     if not all([user_id, project_id, template_name, feedback]):
         raise HTTPException(status_code=400, detail="Missing required fields")
 
-    # 1. Try the current user's doc first
+    # ✅ Query by visible_to — works for both owner and team members
     doc = await db["generated_docs"].find_one(
-        {"user_id": user_id, "project_id": project_id, "template_name": template_name},
+        {
+            "visible_to": user_id,
+            "project_id": project_id,
+            "template_name": template_name,
+        },
         sort=[("version", -1)]
     )
 
-    # 2. ✅ Team fallback — find doc from any workspace member
     if not doc:
-        workspace = await db["workspaces"].find_one({"members": user_id})
-        if workspace:
-            member_ids = workspace.get("members", [])
-            print(f"🔥 DEBUG: improve fallback — searching members: {member_ids}")
-            doc = await db["generated_docs"].find_one(
-                {
-                    "user_id": {"$in": member_ids},
-                    "project_id": project_id,
-                    "template_name": template_name,
-                },
-                sort=[("version", -1)]
-            )
-
-    if not doc:
+        print(f"❌ DEBUG: No doc found for user {user_id}, project {project_id}, template {template_name}")
         raise HTTPException(status_code=404, detail="Document not found")
 
     from langchain_google_genai import ChatGoogleGenerativeAI
@@ -373,39 +362,35 @@ Return improved document only.
     result = await llm.ainvoke(prompt)
     improved_doc = result.content if hasattr(result, "content") else str(result)
 
-    new_version = (doc.get("version") or 1) + 1
+    # ✅ Use save_generated_doc — handles visible_to, workspace_id,
+    #    version increment, is_latest flag, and subscription count correctly
+    from app.services.doc_storage_service import save_generated_doc
 
-    # ✅ Save the improved version under the CURRENT user's id
-    # so they own their own copy going forward
-    await db["generated_docs"].insert_one({
-        "user_id": user_id,
-        "project_id": project_id,
-        "template_name": template_name,
-        "version": new_version,
-        "generated_docs": improved_doc,
-        "board_name": board_name or doc.get("board_name"),
-        "created_at": datetime.utcnow(),
-        "is_latest": True,
-    })
+    await save_generated_doc(
+        db=db,
+        user_id=user_id,
+        project_id=project_id,
+        template_name=template_name,
+        content=improved_doc,
+        source=doc.get("source", "trello"),
+        team_id=doc.get("team_id"),
+        is_final=False,
+        workspace_name=board_name or doc.get("workspace_name") or doc.get("board_name"),
+    )
 
-    # Mark all previous versions (including original owner's) as not latest
-    await db["generated_docs"].update_many(
+    # ✅ Fetch the newly saved version to return correct version number
+    new_doc = await db["generated_docs"].find_one(
         {
+            "visible_to": user_id,
             "project_id": project_id,
             "template_name": template_name,
-            "_id": {"$ne": None}  # will be overridden below
-        },
-        {"$set": {"is_latest": False}}
-    )
-    # Re-mark the new one as latest
-    await db["generated_docs"].update_one(
-        {"user_id": user_id, "project_id": project_id, "template_name": template_name, "version": new_version},
-        {"$set": {"is_latest": True}}
+            "is_latest": True,
+        }
     )
 
     return {
         "status": "success",
-        "version": new_version,
+        "version": new_doc.get("version") if new_doc else None,
         "generated_docs": improved_doc
     }
 
@@ -416,55 +401,38 @@ async def get_generated_doc(
     user_id: str,
     project_id: str,
     template_name: str,
-    workspace_id: str = None,
 ):
-    print("🔥 DEBUG: Fetch generated doc request")
     db = request.app.state.db
 
-    # 1. Try is_latest for this user
-    doc = await db["generated_docs"].find_one({
-        "user_id": user_id,
-        "project_id": project_id,
-        "template_name": template_name,
-        "is_latest": True
-    })
+    # ✅ Single query — visible_to covers both owner and team members
+    doc = await db["generated_docs"].find_one(
+        {
+            "visible_to": user_id,
+            "project_id": project_id,
+            "template_name": template_name,
+            "is_latest": True,
+        }
+    )
 
-    # 2. Fallback: latest by version for this user
+    # Fallback if no is_latest flag set
     if not doc:
         doc = await db["generated_docs"].find_one(
-            {"user_id": user_id, "project_id": project_id, "template_name": template_name},
+            {
+                "visible_to": user_id,
+                "project_id": project_id,
+                "template_name": template_name,
+            },
             sort=[("version", -1)]
         )
 
-    # 3. ✅ Team fallback: find workspace → get all member IDs → search their docs
     if not doc:
-        from bson import ObjectId
-
-        # Find workspace this user belongs to
-        workspace = await db["workspaces"].find_one({"members": user_id})
-
-        if workspace:
-            member_ids = workspace.get("members", [])
-            print(f"🔥 DEBUG: Searching docs for workspace members: {member_ids}")
-
-            doc = await db["generated_docs"].find_one(
-                {
-                    "user_id": {"$in": member_ids},
-                    "project_id": project_id,
-                    "template_name": template_name,
-                },
-                sort=[("version", -1)]
-            )
-
-    if not doc:
-        print("❌ DEBUG: Document not found even after workspace fallback")
         return {"status": "not_found", "generated_docs": "", "board_name": ""}
 
     return {
         "status": "success",
         "template_name": template_name,
         "generated_docs": doc.get("generated_docs", ""),
-        "board_name": doc.get("board_name", "Unknown Board")
+        "board_name": doc.get("board_name") or doc.get("workspace_name") or "Unknown Board",
     }
 
 # ------------------ Run ------------------

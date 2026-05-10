@@ -168,26 +168,13 @@ async def get_versions(
 ):
     db = request.app.state.db
 
-    # Check if any docs exist for this user directly
-    count = await db["generated_docs"].count_documents({
-        "user_id": user_id,
-        "project_id": project_id,
-        "template_name": template_name
-    })
-
-    if count > 0:
-        query = {"user_id": user_id, "project_id": project_id, "template_name": template_name}
-    else:
-        # ✅ Team fallback — search all workspace members' docs
-        workspace = await db["workspaces"].find_one({"members": user_id})
-        member_ids = workspace.get("members", []) if workspace else []
-        query = {
-            "user_id": {"$in": member_ids},
+    cursor = db["generated_docs"].find(
+        {
+            "visible_to": user_id,   # ✅ covers owner + all team members
             "project_id": project_id,
-            "template_name": template_name
+            "template_name": template_name,
         }
-
-    cursor = db["generated_docs"].find(query).sort("version", -1)
+    ).sort("version", -1)
 
     versions = []
     async for doc in cursor:
