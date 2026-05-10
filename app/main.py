@@ -473,46 +473,6 @@ async def get_generated_doc(
         "board_name": doc.get("board_name") or doc.get("workspace_name") or "Unknown Board",
     }
 
-# ------------------ Generated Doc ------------------
-@app.get("/workflow/generated")
-async def get_generated_doc(
-    user_id: str,
-    project_id: str,
-    template_name: str,
-    request: Request
-):
-    print("🔥 DEBUG: Fetch generated doc request")
-
-    db = request.app.state.db
-
-    source = request.query_params.get("source")
-    team_id = request.query_params.get("team_id")
-
-    print(f"🔥 DEBUG: source={source}, team_id={team_id}")
-
-    doc = await db["generated_docs"].find_one({
-    "user_id": user_id,
-    "project_id": project_id,
-    "template_name": template_name,
-    "is_latest": True
-})
-
-    if not doc:
-        doc = await db["generated_docs"].find_one(
-        {
-            "user_id": user_id,
-            "project_id": project_id,
-            "template_name": template_name,
-        },
-             sort=[("version", -1)]
-    )
-    return {
-        "status": "success",
-        "template_name": template_name,
-        "generated_docs": doc.get("generated_docs", ""),
-        "board_name": doc.get("board_name", "Unknown Board")
-    }
-
 # ------------------ Run ------------------
 if __name__ == "__main__":
     print("🔥 DEBUG: Starting Uvicorn server...")
