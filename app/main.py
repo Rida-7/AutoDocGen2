@@ -322,8 +322,6 @@ async def improve_with_feedback(request: Request):
     data = await request.json()
     db = request.app.state.db
 
-    print("🔥 DEBUG: Improve with feedback request received")
-
     user_id = data.get("user_id")
     project_id = data.get("project_id")
     template_name = data.get("template_name")
@@ -331,23 +329,31 @@ async def improve_with_feedback(request: Request):
     board_name = data.get("board_name")
 
     if not all([user_id, project_id, template_name, feedback]):
-        print("❌ DEBUG: Missing feedback fields")
         raise HTTPException(status_code=400, detail="Missing required fields")
 
+    # 1. Try the current user's doc first
     doc = await db["generated_docs"].find_one(
-        {
-            "user_id": user_id,
-            "project_id": project_id,
-            "template_name": template_name
-        },
+        {"user_id": user_id, "project_id": project_id, "template_name": template_name},
         sort=[("version", -1)]
     )
 
+    # 2. ✅ Team fallback — find doc from any workspace member
     if not doc:
-        print("❌ DEBUG: Document not found")
-        raise HTTPException(status_code=404, detail="Document not found")
+        workspace = await db["workspaces"].find_one({"members": user_id})
+        if workspace:
+            member_ids = workspace.get("members", [])
+            print(f"🔥 DEBUG: improve fallback — searching members: {member_ids}")
+            doc = await db["generated_docs"].find_one(
+                {
+                    "user_id": {"$in": member_ids},
+                    "project_id": project_id,
+                    "template_name": template_name,
+                },
+                sort=[("version", -1)]
+            )
 
-    print("🔥 DEBUG: Sending to Gemini for improvement")
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
 
     from langchain_google_genai import ChatGoogleGenerativeAI
     llm = ChatGoogleGenerativeAI(model='gemini-2.5-flash')
@@ -369,17 +375,33 @@ Return improved document only.
 
     new_version = (doc.get("version") or 1) + 1
 
+    # ✅ Save the improved version under the CURRENT user's id
+    # so they own their own copy going forward
     await db["generated_docs"].insert_one({
         "user_id": user_id,
         "project_id": project_id,
         "template_name": template_name,
         "version": new_version,
         "generated_docs": improved_doc,
-        "board_name": board_name,
-        "created_at": datetime.utcnow()
+        "board_name": board_name or doc.get("board_name"),
+        "created_at": datetime.utcnow(),
+        "is_latest": True,
     })
 
-    print(f"🔥 DEBUG: New version saved = {new_version}")
+    # Mark all previous versions (including original owner's) as not latest
+    await db["generated_docs"].update_many(
+        {
+            "project_id": project_id,
+            "template_name": template_name,
+            "_id": {"$ne": None}  # will be overridden below
+        },
+        {"$set": {"is_latest": False}}
+    )
+    # Re-mark the new one as latest
+    await db["generated_docs"].update_one(
+        {"user_id": user_id, "project_id": project_id, "template_name": template_name, "version": new_version},
+        {"$set": {"is_latest": True}}
+    )
 
     return {
         "status": "success",
