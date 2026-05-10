@@ -14,7 +14,7 @@ from datetime import datetime
 print("🔥 DEBUG: Loading environment variables...")
 load_dotenv()
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+FRONTEND_URL = os.getenv("FRONTEND_URL")
 MONGODB_URI = os.getenv("MONGODB_URI")
 DB_NAME = os.getenv("DB_NAME", "Doc_Gen")
 PORT = int(os.getenv("PORT", 8080))

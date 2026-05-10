@@ -2,6 +2,7 @@ import stripe
 import os
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+FRONTEND_URL = os.getenv("FRONTEND_URL")
 
 
 def create_checkout_session(user_id: str, plan: str):
@@ -26,8 +27,8 @@ def create_checkout_session(user_id: str, plan: str):
             }
         ],
         mode="payment",
-        success_url="http://localhost:5173/payment-success?session_id={CHECKOUT_SESSION_ID}",
-        cancel_url="http://localhost:5173/pricing",
+        success_url=f"{FRONTEND_URL}/payment-success?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{FRONTEND_URL}/pricing",
         metadata={
             "user_id": user_id,
             "plan": plan,

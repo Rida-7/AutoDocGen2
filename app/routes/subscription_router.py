@@ -1,3 +1,5 @@
+import os
+
 from fastapi import APIRouter, Request, HTTPException
 from app.models.subscription_model import (
     get_user_subscription,
@@ -9,7 +11,7 @@ from app.services.stripe_service import create_checkout_session
 import stripe
 
 router = APIRouter(prefix="/subscription", tags=["Subscription"])
-endpoint_secret = "whsec_a3AzLDHltfilLI3RheKhMY3K73RBcIfZ"
+endpoint_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
 
 
 @router.get("/status")

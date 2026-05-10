@@ -17,8 +17,8 @@ router = APIRouter()
 
 JWT_SECRET = os.getenv("JWT_SECRET", "devsecret")
 JWT_EXPIRES_IN = os.getenv("JWT_EXPIRES_IN", "15m")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
-BASE_URL = os.getenv("BASE_URL", "http://localhost:4000")
+FRONTEND_URL = os.getenv("FRONTEND_URL")
+BASE_URL = os.getenv("BASE_URL")
 
 
 # -------------------------------

@@ -9,6 +9,7 @@ router = APIRouter()
 CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("GITHUB_REDIRECT_URI")
+FRONTEND_URL = os.getenv("FRONTEND_URL")
 
 
 # ================================
@@ -53,4 +54,4 @@ async def github_callback(request: Request, code: str, state: str):
     await save_github_token(request.app.state.db, user_id, token_data)
 
     # redirect back to frontend
-    return RedirectResponse("http://localhost:5173/github/repos")
+    return RedirectResponse(f"{FRONTEND_URL}/github/repos")
