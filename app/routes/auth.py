@@ -75,6 +75,20 @@ def serialize_user(user: dict) -> dict:
         user_copy["createdAt"] = user_copy["createdAt"].isoformat()
     return user_copy
 
+# -------------------------------
+# Logout
+# -------------------------------
+@router.post("/logout")
+async def logout(response: Response):
+    response = JSONResponse({"message": "Logged out successfully"})
+    response.delete_cookie(
+        key="token",
+        path="/",
+        httponly=True,
+        samesite="none" if os.getenv("NODE_ENV") == "production" else "lax",
+        secure=os.getenv("NODE_ENV") == "production"
+    )
+    return response
 
 # -------------------------------
 # Signup
