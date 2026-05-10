@@ -317,7 +317,6 @@ async def channels_with_headings(user_id: str, team_id: str):
 # ------------------ Workflow ------------------
 
 # ------------------ Improve with Feedback ------------------
-# ------------------ Improve with Feedback ------------------
 @app.post("/workflow/improve-with-feedback")
 async def improve_with_feedback(request: Request):
     data = await request.json()
@@ -335,27 +334,18 @@ async def improve_with_feedback(request: Request):
         print("❌ DEBUG: Missing feedback fields")
         raise HTTPException(status_code=400, detail="Missing required fields")
 
-    # ✅ visible_to covers both solo users and team members
-    # Solo users: visible_to = [user_id]
-    # Team users: visible_to = [owner_id, member_id, ...]
+    # ✅ New docs with visible_to
     doc = await db["generated_docs"].find_one(
-        {
-            "visible_to": user_id,
-            "project_id": project_id,
-            "template_name": template_name,
-        },
+        {"visible_to": user_id, "project_id": project_id, "template_name": template_name},
         sort=[("version", -1)]
     )
 
-    # ✅ Fallback for old docs saved before visible_to was added
+    # ✅ Always also check old docs without visible_to
     if not doc:
         print("🔥 DEBUG: visible_to miss — trying legacy user_id query")
         doc = await db["generated_docs"].find_one(
-            {
-                "user_id": user_id,
-                "project_id": project_id,
-                "template_name": template_name,
-            },
+            {"user_id": user_id, "project_id": project_id, "template_name": template_name,
+             "visible_to": {"$exists": False}},
             sort=[("version", -1)]
         )
 
@@ -385,8 +375,7 @@ Return improved document only.
     result = await llm.ainvoke(prompt)
     improved_doc = result.content if hasattr(result, "content") else str(result)
 
-    # ✅ save_generated_doc handles: visible_to, workspace_id,
-    #    version increment, is_latest, subscription count
+    # ✅ save_generated_doc handles visible_to, workspace, version, is_latest
     await save_generated_doc(
         db=db,
         user_id=user_id,
@@ -399,15 +388,18 @@ Return improved document only.
         workspace_name=board_name or doc.get("workspace_name") or doc.get("board_name"),
     )
 
-    # Fetch saved doc to get correct version number
+    # Fetch saved doc to return correct version number
     new_doc = await db["generated_docs"].find_one(
-        {
-            "visible_to": user_id,
-            "project_id": project_id,
-            "template_name": template_name,
-            "is_latest": True,
-        }
+        {"visible_to": user_id, "project_id": project_id,
+         "template_name": template_name, "is_latest": True}
     )
+    # Legacy fallback for version fetch
+    if not new_doc:
+        new_doc = await db["generated_docs"].find_one(
+            {"user_id": user_id, "project_id": project_id,
+             "template_name": template_name, "visible_to": {"$exists": False}},
+            sort=[("version", -1)]
+        )
 
     print(f"🔥 DEBUG: New version saved = {new_doc.get('version') if new_doc else '?'}")
 
@@ -429,36 +421,25 @@ async def get_generated_doc(
     print("🔥 DEBUG: Fetch generated doc request")
     db = request.app.state.db
 
-    # ✅ Try is_latest via visible_to (team + solo)
+    # ✅ 1. is_latest via visible_to (new docs — team + solo)
     doc = await db["generated_docs"].find_one(
-        {
-            "visible_to": user_id,
-            "project_id": project_id,
-            "template_name": template_name,
-            "is_latest": True,
-        }
+        {"visible_to": user_id, "project_id": project_id,
+         "template_name": template_name, "is_latest": True}
     )
 
-    # ✅ Fallback: any version via visible_to
+    # ✅ 2. Any version via visible_to
     if not doc:
         doc = await db["generated_docs"].find_one(
-            {
-                "visible_to": user_id,
-                "project_id": project_id,
-                "template_name": template_name,
-            },
+            {"visible_to": user_id, "project_id": project_id, "template_name": template_name},
             sort=[("version", -1)]
         )
 
-    # ✅ Legacy fallback: old docs without visible_to field
+    # ✅ 3. Old docs without visible_to field — always check
     if not doc:
         print("🔥 DEBUG: visible_to miss — trying legacy user_id query")
         doc = await db["generated_docs"].find_one(
-            {
-                "user_id": user_id,
-                "project_id": project_id,
-                "template_name": template_name,
-            },
+            {"user_id": user_id, "project_id": project_id, "template_name": template_name,
+             "visible_to": {"$exists": False}},
             sort=[("version", -1)]
         )
 
