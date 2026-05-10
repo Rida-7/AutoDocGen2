@@ -48,7 +48,7 @@ app.add_middleware(
         "http://localhost:5173",
         "https://autodocgen-production.up.railway.app",
         "https://autodocgenf.netlify.app",
-        "https://autodocgen2-production-8e78.up.railway.app",
+        "https://autodocgen2-production-8e78.up.railway.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -316,10 +316,14 @@ async def channels_with_headings(user_id: str, team_id: str):
 
 # ------------------ Workflow ------------------
 
+# ------------------ Improve with Feedback ------------------
+# ------------------ Improve with Feedback ------------------
 @app.post("/workflow/improve-with-feedback")
 async def improve_with_feedback(request: Request):
     data = await request.json()
     db = request.app.state.db
+
+    print("🔥 DEBUG: Improve with feedback request received")
 
     user_id = data.get("user_id")
     project_id = data.get("project_id")
@@ -328,9 +332,12 @@ async def improve_with_feedback(request: Request):
     board_name = data.get("board_name")
 
     if not all([user_id, project_id, template_name, feedback]):
+        print("❌ DEBUG: Missing feedback fields")
         raise HTTPException(status_code=400, detail="Missing required fields")
 
-    # ✅ Query by visible_to — works for both owner and team members
+    # ✅ visible_to covers both solo users and team members
+    # Solo users: visible_to = [user_id]
+    # Team users: visible_to = [owner_id, member_id, ...]
     doc = await db["generated_docs"].find_one(
         {
             "visible_to": user_id,
@@ -340,11 +347,27 @@ async def improve_with_feedback(request: Request):
         sort=[("version", -1)]
     )
 
+    # ✅ Fallback for old docs saved before visible_to was added
     if not doc:
-        print(f"❌ DEBUG: No doc found for user {user_id}, project {project_id}, template {template_name}")
+        print("🔥 DEBUG: visible_to miss — trying legacy user_id query")
+        doc = await db["generated_docs"].find_one(
+            {
+                "user_id": user_id,
+                "project_id": project_id,
+                "template_name": template_name,
+            },
+            sort=[("version", -1)]
+        )
+
+    if not doc:
+        print("❌ DEBUG: Document not found")
         raise HTTPException(status_code=404, detail="Document not found")
 
+    print("🔥 DEBUG: Sending to Gemini for improvement")
+
     from langchain_google_genai import ChatGoogleGenerativeAI
+    from app.services.doc_storage_service import save_generated_doc
+
     llm = ChatGoogleGenerativeAI(model='gemini-2.5-flash')
 
     prompt = f"""
@@ -362,10 +385,8 @@ Return improved document only.
     result = await llm.ainvoke(prompt)
     improved_doc = result.content if hasattr(result, "content") else str(result)
 
-    # ✅ Use save_generated_doc — handles visible_to, workspace_id,
-    #    version increment, is_latest flag, and subscription count correctly
-    from app.services.doc_storage_service import save_generated_doc
-
+    # ✅ save_generated_doc handles: visible_to, workspace_id,
+    #    version increment, is_latest, subscription count
     await save_generated_doc(
         db=db,
         user_id=user_id,
@@ -378,7 +399,7 @@ Return improved document only.
         workspace_name=board_name or doc.get("workspace_name") or doc.get("board_name"),
     )
 
-    # ✅ Fetch the newly saved version to return correct version number
+    # Fetch saved doc to get correct version number
     new_doc = await db["generated_docs"].find_one(
         {
             "visible_to": user_id,
@@ -388,11 +409,14 @@ Return improved document only.
         }
     )
 
+    print(f"🔥 DEBUG: New version saved = {new_doc.get('version') if new_doc else '?'}")
+
     return {
         "status": "success",
         "version": new_doc.get("version") if new_doc else None,
         "generated_docs": improved_doc
     }
+
 
 # ------------------ Generated Doc ------------------
 @app.get("/workflow/generated")
@@ -402,9 +426,10 @@ async def get_generated_doc(
     project_id: str,
     template_name: str,
 ):
+    print("🔥 DEBUG: Fetch generated doc request")
     db = request.app.state.db
 
-    # ✅ Single query — visible_to covers both owner and team members
+    # ✅ Try is_latest via visible_to (team + solo)
     doc = await db["generated_docs"].find_one(
         {
             "visible_to": user_id,
@@ -414,7 +439,7 @@ async def get_generated_doc(
         }
     )
 
-    # Fallback if no is_latest flag set
+    # ✅ Fallback: any version via visible_to
     if not doc:
         doc = await db["generated_docs"].find_one(
             {
@@ -425,7 +450,20 @@ async def get_generated_doc(
             sort=[("version", -1)]
         )
 
+    # ✅ Legacy fallback: old docs without visible_to field
     if not doc:
+        print("🔥 DEBUG: visible_to miss — trying legacy user_id query")
+        doc = await db["generated_docs"].find_one(
+            {
+                "user_id": user_id,
+                "project_id": project_id,
+                "template_name": template_name,
+            },
+            sort=[("version", -1)]
+        )
+
+    if not doc:
+        print("❌ DEBUG: Document not found")
         return {"status": "not_found", "generated_docs": "", "board_name": ""}
 
     return {
@@ -433,6 +471,46 @@ async def get_generated_doc(
         "template_name": template_name,
         "generated_docs": doc.get("generated_docs", ""),
         "board_name": doc.get("board_name") or doc.get("workspace_name") or "Unknown Board",
+    }
+
+# ------------------ Generated Doc ------------------
+@app.get("/workflow/generated")
+async def get_generated_doc(
+    user_id: str,
+    project_id: str,
+    template_name: str,
+    request: Request
+):
+    print("🔥 DEBUG: Fetch generated doc request")
+
+    db = request.app.state.db
+
+    source = request.query_params.get("source")
+    team_id = request.query_params.get("team_id")
+
+    print(f"🔥 DEBUG: source={source}, team_id={team_id}")
+
+    doc = await db["generated_docs"].find_one({
+    "user_id": user_id,
+    "project_id": project_id,
+    "template_name": template_name,
+    "is_latest": True
+})
+
+    if not doc:
+        doc = await db["generated_docs"].find_one(
+        {
+            "user_id": user_id,
+            "project_id": project_id,
+            "template_name": template_name,
+        },
+             sort=[("version", -1)]
+    )
+    return {
+        "status": "success",
+        "template_name": template_name,
+        "generated_docs": doc.get("generated_docs", ""),
+        "board_name": doc.get("board_name", "Unknown Board")
     }
 
 # ------------------ Run ------------------
