@@ -165,18 +165,27 @@ async def get_versions(
     user_id: str,
     project_id: str,
     template_name: str,
-    workspace_id: str = None,   # ✅ NEW
 ):
     db = request.app.state.db
 
-    query = {"user_id": user_id, "project_id": project_id, "template_name": template_name}
+    # Check if any docs exist for this user directly
+    count = await db["generated_docs"].count_documents({
+        "user_id": user_id,
+        "project_id": project_id,
+        "template_name": template_name
+    })
 
-    # Check if any docs exist for this user
-    count = await db["generated_docs"].count_documents(query)
-
-    # ✅ Fallback to workspace
-    if count == 0 and workspace_id:
-        query = {"workspace_id": workspace_id, "project_id": project_id, "template_name": template_name}
+    if count > 0:
+        query = {"user_id": user_id, "project_id": project_id, "template_name": template_name}
+    else:
+        # ✅ Team fallback — search all workspace members' docs
+        workspace = await db["workspaces"].find_one({"members": user_id})
+        member_ids = workspace.get("members", []) if workspace else []
+        query = {
+            "user_id": {"$in": member_ids},
+            "project_id": project_id,
+            "template_name": template_name
+        }
 
     cursor = db["generated_docs"].find(query).sort("version", -1)
 
@@ -187,7 +196,6 @@ async def get_versions(
             "content": doc.get("generated_docs", ""),
             "created_at": doc.get("created_at"),
             "is_latest": doc.get("is_latest", False),
-            "created_by": doc.get("user_id", ""),   # ✅ for frontend if needed
         })
 
     return {"versions": versions}

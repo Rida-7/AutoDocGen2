@@ -394,18 +394,12 @@ async def get_generated_doc(
     user_id: str,
     project_id: str,
     template_name: str,
-    workspace_id: str = None,   # team fallback
+    workspace_id: str = None,
 ):
     print("🔥 DEBUG: Fetch generated doc request")
-
     db = request.app.state.db
 
-    source = request.query_params.get("source")
-    team_id = request.query_params.get("team_id")
-
-    print(f"🔥 DEBUG: source={source}, team_id={team_id}")
-
-    # 1. Try is_latest first
+    # 1. Try is_latest for this user
     doc = await db["generated_docs"].find_one({
         "user_id": user_id,
         "project_id": project_id,
@@ -420,16 +414,28 @@ async def get_generated_doc(
             sort=[("version", -1)]
         )
 
-    # 3. ✅ Team fallback: someone else in the same workspace generated it
-    if not doc and workspace_id:
-        doc = await db["generated_docs"].find_one(
-            {"workspace_id": workspace_id, "project_id": project_id, "template_name": template_name},
-            sort=[("version", -1)]
-        )
-
-    # 4. ✅ Guard — was missing, causing the crash
+    # 3. ✅ Team fallback: find workspace → get all member IDs → search their docs
     if not doc:
-        print("❌ DEBUG: Document not found")
+        from bson import ObjectId
+
+        # Find workspace this user belongs to
+        workspace = await db["workspaces"].find_one({"members": user_id})
+
+        if workspace:
+            member_ids = workspace.get("members", [])
+            print(f"🔥 DEBUG: Searching docs for workspace members: {member_ids}")
+
+            doc = await db["generated_docs"].find_one(
+                {
+                    "user_id": {"$in": member_ids},
+                    "project_id": project_id,
+                    "template_name": template_name,
+                },
+                sort=[("version", -1)]
+            )
+
+    if not doc:
+        print("❌ DEBUG: Document not found even after workspace fallback")
         return {"status": "not_found", "generated_docs": "", "board_name": ""}
 
     return {
