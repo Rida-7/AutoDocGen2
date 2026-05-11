@@ -75,11 +75,9 @@ from app.routes.github_webhook_router import router as github_webhook_router
 from app.routes.notification_router import router as notification_router
 from app.routes.subscription_router import router as subscription_router
 from app.routes.workspace_router import router as workspace_router
-
-
-
-
+from app.routes.admin_router import router as admin_router
 print("🔥 DEBUG: Registering routers...")
+app.include_router(admin_router)
 
 app.include_router(auth_router.router, prefix="/auth")
 app.include_router(user_router.router, prefix="/api")
