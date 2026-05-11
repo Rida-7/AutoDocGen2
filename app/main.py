@@ -48,7 +48,8 @@ app.add_middleware(
         "http://localhost:5173",
         "https://autodocgen-production.up.railway.app",
         "https://autodocgenf.netlify.app",
-        "https://autodocgen2-production-8e78.up.railway.app"
+        "https://autodocgen2-production-8e78.up.railway.app",
+        "https://autodocgenff.netlify.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
